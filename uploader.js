@@ -23,7 +23,7 @@ const prnt = console.log;
 
 // Get authenticated API client
 async function getAuthClient() {
-  const serviceAccountJSONString = Buffer.from(process.env.GOOGLE_SVC_ACCOUNT_JSON_B64, 'base64').toString('ascii')
+  const serviceAccountJSONString = Buffer.from(process.env.GOOGLE_UPLOAD_JSON_KEY_B64, 'base64').toString('ascii')
   let json_file_content = ''
   try {
     json_file_content = JSON.parse(serviceAccountJSONString);
