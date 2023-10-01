@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Simple HTML audio player</title>
+  <meta name="description" content="A Simple HTML audio player">
+  <!-- This prevents separate load request of favicon -->
+  <link rel="shortcut icon" type="image/x-icon"
+    href="data:image/x-icon;base64,00000100010001010000010018003000000016000000280000000100000002000000010018000000000000000000000000000000000000000000000000000000ff0000000000" />
+
+  <!-- <link rel="stylesheet" href="css/styles.css?v=1.0"> -->
+  <style>
+    #audiolist {
+      line-height: 2em;
+      width: 50%;
+      background-color: lightblue;
+    }
+
+    #audiolist li:hover {
+      font-style: italic;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+  <audio id="audio" controls="controls" onerror="alert('Could not play MP3 audio file ' + this.src + '!');"
+    onended="skip()">
+    HTML5 MP3 audio not supported
+  </audio>
+  <ul id="audiolist"></ul>
+</body>
+<script>
+  const mediapath = '.'
+
+  // Get list with ls -1
+  const medialisting = `example1.mp3
+example2.mp3
+example3.m4a`
+  const medialist = medialisting.split('\n');
+
+  function clearList() {
+    const audioItems = document.querySelectorAll('li')
+    for (const item of Array.from(audioItems)) item.style.fontWeight = '';
+  }
+
+  function getPlaylist() {
+    const adc = document.getElementById('audiolist')
+
+    let audiolist = ''
+    for (const fileName of medialist) {
+      const fullFilePath = mediapath + '/' + encodeURIComponent(fileName)
+      audiolist += `<li data-path="${fullFilePath}">${fileName}</li>`
+    }
+    adc.innerHTML = audiolist
+  }
+
+  function init() {
+    document.addEventListener('click', function (evt) {
+      if (evt.target.tagName.toLowerCase() == 'li') { clearList(); play(evt.target); }
+    }, false);
+  }
+
+  function skip() {
+  }
+
+  function play(elem) {
+    var audio = document.getElementById('audio');
+    audio.src = elem.dataset.path;
+    audio.play();
+    elem.style.fontWeight = 'bold';
+    skip = function () {
+      elem.style.fontWeight = '';
+      if (elem.nextElementSibling) {
+        play(elem.nextElementSibling);
+      }
+    }
+  }
+
+  getPlaylist()
+  init();
+  clearList();
+
+</script>
+
+</html>
