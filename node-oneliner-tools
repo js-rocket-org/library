@@ -1,0 +1,4 @@
+## One liner to compress JSON file
+
+node -e "import fs from 'node:fs'; const fn='_docs/platform_rules.json'; const data=JSON.parse(fs.readFileSync(fn, 'utf8')); fs.writeFileSync(fn, JSON.stringify(data))"
+
