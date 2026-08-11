@@ -17,11 +17,14 @@ function getBoundary(headers) {
 }
 
 function splitMultipart(content, boundary) {
-  return content.split(`--${boundary}`).filter((part) => part.trim() !== "" && part.trim() !== "--");
+  return content
+    .split(`--${boundary}`)
+    .filter((part) => part.trim() !== "" && part.trim() !== "--");
 }
 
 function parsePart(part) {
-  const separator = "\r\n\r\n";
+  // MIME file is LF-only, but accept CRLF as well.
+  const separator = "\n\n";
   const headerEnd = part.indexOf(separator);
 
   if (headerEnd === -1) return null;
@@ -29,8 +32,11 @@ function parsePart(part) {
   const headers = part.slice(0, headerEnd);
   let body = part.slice(headerEnd + separator.length);
 
-  // Remove trailing CRLF added before the next boundary
-  if (body.endsWith("\r\n")) body = body.slice(0, -2);
+  // Remove trailing LF added before the next boundary.
+  if (body.endsWith("\n")) body = body.slice(0, -1);
+
+  // Also handle CRLF input defensively.
+  if (body.endsWith("\r")) body = body.slice(0, -1);
 
   const filename = extractFilename(headers);
 
@@ -87,7 +93,12 @@ async function main() {
 
   const content = await fsp.readFile(resolvedInput, "utf8");
 
-  const headerEnd = content.indexOf("\r\n\r\n");
+  // MIME file is LF-only, but accept CRLF as well.
+  const headerSeparator = content.includes("\n\n")
+    ? "\n\n"
+    : "\r\n\r\n";
+
+  const headerEnd = content.indexOf(headerSeparator);
 
   if (headerEnd === -1) throw new Error("Invalid MIME file.");
 
@@ -98,7 +109,11 @@ async function main() {
 
   await fsp.mkdir(resolvedOutput, { recursive: true });
 
-  const parts = splitMultipart(content.slice(headerEnd + 4), boundary);
+  const parts = splitMultipart(
+    content.slice(headerEnd + headerSeparator.length),
+    boundary,
+  );
+
   let count = 0;
 
   for (const part of parts) {
