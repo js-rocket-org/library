@@ -5,91 +5,44 @@ const fsp = require("fs/promises");
 const path = require("path");
 
 // Directories to skip while scanning
-const IGNORE_DIRS = new Set([
-  ".prompts",
-  "_prompts",
-  "node_modules",
-  ".venv",
-  ".git",
-  ".svn",
-  ".hg",
-  ".next",
-  ".nuxt",
-  "dist",
-  "build",
-  "coverage",
-  ".cache",
-  ".turbo",
-  ".vscode",
-  ".idea",
-  "site",
-]);
+const IGNORE_DIRS = new Set(
+  // deno-fmt-ignore
+  [
+    ".prompts", "_prompts", "node_modules", ".venv", ".git", ".svn", ".hg", ".next", ".nuxt", "dist",
+    "build", "coverage", ".cache", ".turbo", ".vscode", ".idea", ".wrangler", ".deploy", "site",
+  ],
+);
 
-const INCLUDE_EXTENSIONS = new Set([
-  ".svg",
-  ".js",
-  ".jsx",
-  ".ts",
-  ".tsx",
-  ".dart",
-  ".json",
-  ".md",
-  ".txt",
-  ".php",
-  ".css",
-  ".htm",
-  ".html",
-  ".yml",
-  ".yaml",
-  ".sh",
-]);
+const INCLUDE_EXTENSIONS = new Set(
+  // deno-fmt-ignore
+  [".svg", ".js", ".jsx", ".ts", ".tsx", ".dart", ".json", ".md", ".txt", ".php", ".css", ".htm", ".html",
+    ".yml", ".yaml", ".sh"],
+);
 
 function mimeType(filename) {
   switch (path.extname(filename).toLowerCase()) {
-    case ".js":
-    case ".mjs":
-      return "text/javascript";
-
-    case ".ts":
-      return "text/typescript";
-
-    case ".jsx":
-      return "text/jsx";
-
-    case ".tsx":
-      return "text/tsx";
-
     case ".json":
       return "application/json";
 
+    case ".js":
+    case ".mjs":
+    case ".ts":
+    case ".jsx":
+    case ".tsx":
     case ".html":
     case ".htm":
-      return "text/html";
-
     case ".css":
-      return "text/css";
-
     case ".md":
-      return "text/markdown";
-
     case ".svg":
-      return "image/svg+xml";
-
     case ".yml":
     case ".yaml":
-      return "application/yaml";
-
     case ".php":
-      return "application/x-httpd-php";
-
     case ".sh":
-      return "application/x-sh";
-
     case ".dart":
-      return "application/dart";
+      return "text/plain";
 
     default:
-      return "text/plain";
+      return "application/octet-stream";
   }
 }
 
@@ -100,9 +53,7 @@ async function* getFiles(dir, baseDir = dir) {
     const fullPath = path.join(dir, entry.name);
 
     if (entry.isDirectory()) {
-      if (IGNORE_DIRS.has(entry.name)) {
-        continue;
-      }
+      if (IGNORE_DIRS.has(entry.name)) continue;
 
       console.log(`=== Folder: ${path.relative(baseDir, fullPath) || entry.name}`);
 
@@ -110,29 +61,19 @@ async function* getFiles(dir, baseDir = dir) {
       continue;
     }
 
-    if (!entry.isFile()) {
-      continue;
-    }
-
-    if (entry.name === ".DS_Store") {
-      continue;
-    }
+    if (!entry.isFile()) continue;
+    if (entry.name === ".DS_Store") continue;
 
     const ext = path.extname(entry.name).toLowerCase();
 
-    if (!INCLUDE_EXTENSIONS.has(ext)) {
-      continue;
-    }
+    if (!INCLUDE_EXTENSIONS.has(ext)) continue;
 
     try {
       const content = await fsp.readFile(fullPath, "utf8");
 
       yield {
         // path: path.relative(baseDir, fullPath).replace(/\\/g, "/"),
-        path: path.join(
-                path.basename(baseDir),
-                path.relative(baseDir, fullPath)
-              ).replace(/\\/g, "/"),
+        path: path.join(path.basename(baseDir), path.relative(baseDir, fullPath)).replace(/\\/g, "/"),
         content,
       };
     } catch {
@@ -147,7 +88,7 @@ async function main() {
 
   if (!inputFolder) {
     console.error("Usage:");
-    console.error("  node export-files.js <input-folder> [output.mime]");
+    console.error("  node folder2mime.js <input-folder> [output.mime]");
     process.exit(1);
   }
 
@@ -156,9 +97,7 @@ async function main() {
   try {
     const stats = await fsp.stat(resolvedInput);
 
-    if (!stats.isDirectory()) {
-      throw new Error("Input path is not a directory.");
-    }
+    if (!stats.isDirectory()) throw new Error("Input path is not a directory.");
   } catch {
     console.error(`Invalid input folder: ${resolvedInput}`);
     process.exit(1);
@@ -166,42 +105,38 @@ async function main() {
 
   console.log(`Scanning ${resolvedInput}...`);
 
-  const boundary =
-    "===============_" +
-    Date.now().toString(16) +
-    "_" +
-    Math.random().toString(16).slice(2);
+  const boundary = "===============_" + Date.now().toString(16) + "_" + Math.random().toString(16).slice(2);
 
-  const out = fs.createWriteStream(outputFile, {
-    encoding: "utf8",
-  });
+  const out = fs.createWriteStream(outputFile, { encoding: "utf8" });
 
-  out.write(`MIME-Version: 1.0\r\n`);
-  out.write(`Content-Type: multipart/mixed; boundary="${boundary}"\r\n`);
-  out.write(`\r\n`);
+  const output1 = `From: Me<me@example.com>\r\n` +
+    `To: You<you@example.com>\r\n` +
+    `Date: ${(new Date()).toUTCString()}\r\n` +
+    `Message-ID: <${Date.now()}.${Math.random().toString(36).slice(2)}@example.com>\r\n` +
+    `Subject: project files\r\n` +
+    `MIME-Version: 1.0\r\n` +
+    `Content-Type: multipart/mixed; boundary="${boundary}"\r\n` +
+    `\r\n`;
+  out.write(output1);
 
   let count = 0;
 
   for await (const file of getFiles(resolvedInput)) {
     count++;
 
-    out.write(`--${boundary}\r\n`);
-    out.write(`Content-Type: ${mimeType(file.path)}; charset=utf-8\r\n`);
-    out.write(
-      `Content-Disposition: attachment; filename="${file.path}"\r\n`
-    );
-    out.write(`\r\n`);
-
-    out.write(file.content);
-
-    if (!file.content.endsWith("\n")) {
-      out.write("\r\n");
-    }
-
-    out.write("\r\n");
+    const output2 = `--${boundary}\r\n` +
+      `Content-Type: ${mimeType(file.path)}; charset=utf-8\r\n` +
+      `Content-Transfer-Encoding: 8bit\r\n` +
+      `Content-Disposition: attachment; filename="${file.path}"\r\n` +
+      `\r\n` +
+      file.content +
+      `${file.content.endsWith("\n") ? "" : "\r\n"}` +
+      `\r\n`;
+    out.write(output2);
   }
 
-  out.write(`--${boundary}--\r\n`);
+  const output3 = `--${boundary}--\r\n`;
+  out.write(output3);
 
   await new Promise((resolve, reject) => {
     out.end((err) => {
