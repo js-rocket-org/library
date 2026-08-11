@@ -74,7 +74,8 @@ async function* getFiles(dir, baseDir = dir) {
       yield {
         // path: path.relative(baseDir, fullPath).replace(/\\/g, "/"),
         path: path.join(path.basename(baseDir), path.relative(baseDir, fullPath)).replace(/\\/g, "/"),
-        content,
+        // Normalize input files to LF as well.
+        content: content.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
       };
     } catch {
       console.warn(`Skipping unreadable file: ${fullPath}`);
@@ -107,16 +108,18 @@ async function main() {
 
   const boundary = "===============_" + Date.now().toString(16) + "_" + Math.random().toString(16).slice(2);
 
+  const LF = "\n";
+
   const out = fs.createWriteStream(outputFile, { encoding: "utf8" });
 
-  const output1 = `From: Me<me@example.com>\r\n` +
-    `To: You<you@example.com>\r\n` +
-    `Date: ${(new Date()).toUTCString()}\r\n` +
-    `Message-ID: <${Date.now()}.${Math.random().toString(36).slice(2)}@example.com>\r\n` +
-    `Subject: project files\r\n` +
-    `MIME-Version: 1.0\r\n` +
-    `Content-Type: multipart/mixed; boundary="${boundary}"\r\n` +
-    `\r\n`;
+  const output1 = `From: Me<me@example.com>${LF}` +
+    `To: You<you@example.com>${LF}` +
+    `Date: ${(new Date()).toUTCString()}${LF}` +
+    `Message-ID: <${Date.now()}.${Math.random().toString(36).slice(2)}@example.com>${LF}` +
+    `Subject: project files${LF}` +
+    `MIME-Version: 1.0${LF}` +
+    `Content-Type: multipart/mixed; boundary="${boundary}"${LF}` +
+    LF;
   out.write(output1);
 
   let count = 0;
@@ -124,18 +127,18 @@ async function main() {
   for await (const file of getFiles(resolvedInput)) {
     count++;
 
-    const output2 = `--${boundary}\r\n` +
-      `Content-Type: ${mimeType(file.path)}; charset=utf-8\r\n` +
-      `Content-Transfer-Encoding: 8bit\r\n` +
-      `Content-Disposition: attachment; filename="${file.path}"\r\n` +
-      `\r\n` +
+    const output2 = `--${boundary}${LF}` +
+      `Content-Type: ${mimeType(file.path)}; charset=utf-8${LF}` +
+      `Content-Transfer-Encoding: 8bit${LF}` +
+      `Content-Disposition: attachment; filename="${file.path}"${LF}` +
+      LF +
       file.content +
-      `${file.content.endsWith("\n") ? "" : "\r\n"}` +
-      `\r\n`;
+      `${file.content.endsWith("\n") ? "" : LF}` +
+      LF;
     out.write(output2);
   }
 
-  const output3 = `--${boundary}--\r\n`;
+  const output3 = `--${boundary}--${LF}`;
   out.write(output3);
 
   await new Promise((resolve, reject) => {
