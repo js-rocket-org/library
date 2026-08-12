@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# helper script for command shortcuts
+SCRIPT_DIR=~/scripts
+APP_DIR=your-app
+
+app_zip() {
+  cd ..
+  node $SCRIPT_DIR/dir2eml.js $APP_DIR $APP_DIR/_updates/cf-app.eml
+  cd cf-app
+  grep "Content-Disposition: attachment; filename=" "_updates/cf-app.eml"
+}
+
+app_unzip() {
+  INPUT_FILE="$1"
+  if [ "$INPUT_FILE" = "" ] || [ ! -f "$INPUT_FILE" ]; then
+    echo "File does not exist: $INPUT_FILE"
+    exit 1
+  fi
+
+  cd ..
+  node $SCRIPT_DIR/eml2dir.js "$APP_DIR/$INPUT_FILE" ./
+  cd cf-app
+}
+
+archive_list() {
+  INPUT_FILE="$1"
+  if [ "$INPUT_FILE" = "" ] || [ ! -f "$INPUT_FILE" ]; then
+    echo "File does not exist: $INPUT_FILE"
+    exit 1
+  fi
+
+  grep "Content-Disposition: attachment; filename=" "$INPUT_FILE" 
+}
+
+
+## archive commands
+if [ "$1" = "zip" ]; then app_zip ; exit $? ; fi
+if [ "$1" = "unzip" ]; then app_unzip "$2" ; exit $? ; fi
+if [ "$1" = "list" ]; then archive_list "$2" ; exit $? ; fi
+
+echo "Usage: ./run <COMMAND>
+where <COMMAND> can be:
+
+zip      - archive project to a .eml file
+unzip    - extract archive project
+list     - list archive contents
+"
+exit 1
