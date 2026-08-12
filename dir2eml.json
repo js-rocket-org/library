@@ -1,0 +1,5 @@
+{
+  "excludeDir": ["_scripts", ".vscode", ".wrangler"],
+  "excludeFiles": [".env.provision", "_env.deploy.sample", "dir2eml.json", "pnpm-lock.yaml", "run"],
+  "includeFiles": []
+}

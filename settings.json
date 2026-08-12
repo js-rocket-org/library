@@ -1,0 +1,9 @@
+{
+  "deno.enable": true,
+  "editor.defaultFormatter": "denoland.vscode-deno",
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.rulers": [120],
+  "files.eol": "\n"
+}
