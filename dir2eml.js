@@ -1,50 +1,75 @@
 #!/usr/bin/env node
 
+/*
+Recursively scans an input directory and exports eligible text files as MIME attachments in a single output file.
+
+Configuration is loaded from .dir2eml.json in the input directory and merged with DEFAULT_CONFIG.
+
+Inclusion and exclusion order:
+
+Directories listed in excludeDir are skipped with all their contents.
+Non-regular files are skipped.
+Files listed in includeFiles are considered before excludeFiles and excludeExt.
+Files listed in excludeFiles are skipped unless also listed in includeFiles.
+Files with an extension listed in excludeExt are skipped unless also listed in includeFiles.
+All remaining files are considered for inclusion, regardless of extension.
+Files containing a zero byte or any byte above 7-bit ASCII are treated as binary and skipped.
+Unreadable files are skipped.
+
+Included files have their line endings normalised to LF and are written as 8-bit MIME attachments.
+*/
+
 const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 
-const CONFIG_FILE = "dir2eml.json";
-
-// Directories to skip while scanning
-// deno-fmt-ignore
-const IGNORE_DIRS = new Set([ ".prompts", "_prompts", "node_modules", ".git", ".svn", ".hg", "dist", "build"]);
+const CONFIG_FILE = ".dir2eml.json";
 
 // deno-fmt-ignore
-const INCLUDE_EXTENSIONS = new Set([
-  ".svg", ".js", ".jsx", ".ts", ".tsx", ".dart", ".json", ".md", ".txt", ".php", ".css", ".htm",
-  ".html", ".yml", ".yaml", ".sh",
-]);
+const TEXT_PLAIN_EXTENSIONS = [
+  ".js", ".mjs", ".ts", ".jsx", ".tsx", ".html", ".htm", ".css", ".md", ".svg", ".yml", ".yaml", ".php", ".sh",
+  ".dart",
+];
 
-const normalisePath = (value) => value.replace(/\\/g, "/").replace(/^\.\//, "");
+// deno-fmt-ignore
+const DEFAULT_CONFIG = {
+  "excludeExt": [".png", ".jpg", ".jpeg", ".svg"],
+  "excludeDir": ["node_modules", ".git", ".vscode", ".wrangler", "_env", "dist", "build", "_prompts", "_prompts_data"],
+  "excludeFiles": [".dir2eml.json", ".DS_Store", "pnpm-lock.yaml", ".gitkeep", ".gitignore", "tsconfig.tsbuildinfo"],
+  "includeFiles": []
+};
 
-const createConfigSet = (values) =>
-  new Set(values.map((value) => normalisePath(value)));
+const createConfigArray = (values) => [...values];
 
 const loadConfig = async (inputFolder) => {
   const configPath = path.join(inputFolder, CONFIG_FILE);
 
   try {
     const content = await fsp.readFile(configPath, "utf8");
-    const config = JSON.parse(content);
+    const userConfig = JSON.parse(content);
+    const config = { ...DEFAULT_CONFIG, ...userConfig };
 
     return {
-      excludeDir: createConfigSet(
+      excludeExt: createConfigArray(
+        Array.isArray(config.excludeExt) ? config.excludeExt : [],
+      ),
+      excludeDir: createConfigArray(
         Array.isArray(config.excludeDir) ? config.excludeDir : [],
       ),
-      excludeFiles: createConfigSet(
+      excludeFiles: createConfigArray(
         Array.isArray(config.excludeFiles) ? config.excludeFiles : [],
       ),
-      includeFiles: createConfigSet(
+      includeFiles: createConfigArray(
         Array.isArray(config.includeFiles) ? config.includeFiles : [],
       ),
     };
   } catch (err) {
     if (err.code === "ENOENT") {
       return {
-        excludeDir: new Set(),
-        excludeFiles: new Set(),
-        includeFiles: new Set(),
+        excludeExt: createConfigArray(DEFAULT_CONFIG.excludeExt),
+        excludeDir: createConfigArray(DEFAULT_CONFIG.excludeDir),
+        excludeFiles: createConfigArray(DEFAULT_CONFIG.excludeFiles),
+        includeFiles: createConfigArray(DEFAULT_CONFIG.includeFiles),
       };
     }
 
@@ -52,96 +77,75 @@ const loadConfig = async (inputFolder) => {
   }
 };
 
-const matchesConfigEntry = (entries, relativePath, name) =>
-  entries.has(relativePath) || entries.has(name);
-
 const mimeType = (filename) => {
-  switch (path.extname(filename).toLowerCase()) {
-    case ".json":
-      return "application/json";
+  const extension = path.extname(filename).toLowerCase();
 
-    case ".js":
-    case ".mjs":
-    case ".ts":
-    case ".jsx":
-    case ".tsx":
-    case ".html":
-    case ".htm":
-    case ".css":
-    case ".md":
-    case ".svg":
-    case ".yml":
-    case ".yaml":
-    case ".php":
-    case ".sh":
-    case ".dart":
-      return "text/plain";
+  if (extension === ".json") return "application/json";
+  if (TEXT_PLAIN_EXTENSIONS.includes(extension)) return "text/plain";
 
-    default:
-      return "application/octet-stream";
+  return "application/octet-stream";
+};
+
+const isBinary = (buffer) =>
+  buffer.some((byte) =>
+    byte > 0x7f ||
+    (byte < 0x20 && byte !== 0x09 && byte !== 0x0a && byte !== 0x0d)
+  );
+
+const addFile = async (files, fullPath, baseDir) => {
+  try {
+    const buffer = await fsp.readFile(fullPath);
+
+    if (isBinary(buffer)) {
+      console.warn(`Skipping binary file: ${fullPath}`);
+      return;
+    }
+
+    const content = buffer.toString("utf8");
+
+    files.push({
+      path: path.join(path.basename(baseDir), path.relative(baseDir, fullPath))
+        .replace(/\\/g, "/"),
+      content: content.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
+    });
+  } catch {
+    console.warn(`Skipping unreadable file: ${fullPath}`);
   }
 };
 
-async function* getFiles(dir, config, baseDir = dir, excludedByParent = false) {
+const getFiles = async (dir, config, baseDir = dir) => {
   const entries = await fsp.readdir(dir, { withFileTypes: true });
+  const files = [];
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
-    const relativePath = normalisePath(path.relative(baseDir, fullPath));
 
     if (entry.isDirectory()) {
-      const excludedByConfig = matchesConfigEntry(
-        config.excludeDir,
-        relativePath,
-        entry.name,
-      );
-      const excludedByBuiltIn = IGNORE_DIRS.has(entry.name);
-      const excluded = excludedByParent || excludedByConfig ||
-        excludedByBuiltIn;
+      if (config.excludeDir.includes(entry.name)) continue;
 
-      if (!excluded) console.log(`=== Folder: ${relativePath || entry.name}`);
-
-      yield* getFiles(fullPath, config, baseDir, excluded);
+      const childFiles = await getFiles(fullPath, config, baseDir);
+      files.push(...childFiles);
       continue;
     }
 
     if (!entry.isFile()) continue;
 
-    const explicitlyIncluded = matchesConfigEntry(
-      config.includeFiles,
-      relativePath,
-      entry.name,
-    );
-
-    if (!explicitlyIncluded) {
-      if (excludedByParent) continue;
-      if (matchesConfigEntry(config.excludeFiles, relativePath, entry.name)) {
-        continue;
-      }
-      if (entry.name === ".DS_Store") continue;
-
-      const ext = path.extname(entry.name).toLowerCase();
-
-      if (!INCLUDE_EXTENSIONS.has(ext)) continue;
+    if (config.includeFiles.includes(entry.name)) {
+      await addFile(files, fullPath, baseDir);
+      continue;
     }
 
-    try {
-      const content = await fsp.readFile(fullPath, "utf8");
+    if (config.excludeFiles.includes(entry.name)) continue;
 
-      yield {
-        // path: path.relative(baseDir, fullPath).replace(/\\/g, "/"),
-        path: path.join(
-          path.basename(baseDir),
-          path.relative(baseDir, fullPath),
-        ).replace(/\\/g, "/"),
-        // Normalize input files to LF as well.
-        content: content.replace(/\r\n/g, "\n").replace(/\r/g, "\n"),
-      };
-    } catch {
-      console.warn(`Skipping unreadable file: ${fullPath}`);
-    }
+    const extension = path.extname(entry.name).toLowerCase();
+
+    if (config.excludeExt.includes(extension)) continue;
+
+    await addFile(files, fullPath, baseDir);
   }
-}
+
+  return files;
+};
 
 const main = async () => {
   const inputFolder = process.argv[2];
@@ -168,26 +172,23 @@ const main = async () => {
 
   console.log(`Scanning ${resolvedInput}...`);
 
-  const boundary = "===============_" + Date.now().toString(16) + "_" +
-    Math.random().toString(16).slice(2);
+  const boundary = `===============_${Date.now().toString(16)}_${
+    Math.random().toString(16).slice(2)
+  }`;
   const LF = "\n";
   const out = fs.createWriteStream(outputFile, { encoding: "utf8" });
 
   const output1 = `From: Me<me@example.com>${LF}` +
-    `To: You<you@example.com>${LF}` +
-    `Date: ${(new Date()).toUTCString()}${LF}` +
-    `Message-ID: <${Date.now()}.${
-      Math.random().toString(36).slice(2)
-    }@example.com>${LF}` +
-    `Subject: project files${LF}` +
+    `Date: ${new Date().toUTCString()}${LF}` +
     `MIME-Version: 1.0${LF}` +
     `Content-Type: multipart/mixed; boundary="${boundary}"${LF}` +
     LF;
   out.write(output1);
 
+  const files = await getFiles(resolvedInput, config);
   let count = 0;
 
-  for await (const file of getFiles(resolvedInput, config)) {
+  for (const file of files) {
     count++;
 
     const output2 = `--${boundary}${LF}` +
