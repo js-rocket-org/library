@@ -32,11 +32,12 @@ const TEXT_PLAIN_EXTENSIONS = [
 ];
 
 // deno-fmt-ignore
-const DEFAULT_CONFIG = {
+const DEFAULT_CONFIG = 
+{
   "excludeExt": [".png", ".jpg", ".jpeg", ".svg"],
   "excludeDir": ["node_modules", ".git", ".vscode", ".wrangler", "_env", "dist", "build", "_prompts", "_prompts_data"],
   "excludeFiles": [".dir2eml.json", ".DS_Store", "pnpm-lock.yaml", ".gitkeep", ".gitignore", "tsconfig.tsbuildinfo"],
-  "includeFiles": []
+  "includeFiles": [],
 };
 
 const createConfigArray = (values) => [...values];
@@ -172,9 +173,7 @@ const main = async () => {
 
   console.log(`Scanning ${resolvedInput}...`);
 
-  const boundary = `===============_${Date.now().toString(16)}_${
-    Math.random().toString(16).slice(2)
-  }`;
+  const boundary = `===============_${Date.now().toString(16)}_${Math.random().toString(16).slice(2)}`;
   const LF = "\n";
   const out = fs.createWriteStream(outputFile, { encoding: "utf8" });
 
