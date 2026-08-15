@@ -3,5 +3,16 @@
     "lineWidth": 120,
     "useTabs": false,
     "indentWidth": 2
+  },
+  "lint": {
+    "exclude": [
+      "node_modules/"
+    ],
+    "rules": {
+      "exclude": [
+        "jsx-boolean-value",
+        "no-process-global"
+      ]
+    }
   }
 }
