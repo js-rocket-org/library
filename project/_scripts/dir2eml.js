@@ -32,18 +32,72 @@ const TEXT_PLAIN_EXTENSIONS = [
 ];
 
 // deno-fmt-ignore
-const DEFAULT_CONFIG = 
-{
+const DEFAULT_CONFIG = {
   "excludeExt": [".png", ".jpg", ".jpeg", ".svg"],
   "excludeDir": ["node_modules", ".git", ".vscode", ".wrangler", "_env", "dist", "build", "_prompts", "_prompts_data"],
   "excludeFiles": [".dir2eml.json", ".DS_Store", "pnpm-lock.yaml", ".gitkeep", ".gitignore", "tsconfig.tsbuildinfo"],
-  "includeFiles": [],
+  "includeFiles": []
 };
 
 const createConfigArray = (values) => [...values];
 
-const loadConfig = async (inputFolder) => {
-  const configPath = path.join(inputFolder, CONFIG_FILE);
+const usage = () => {
+  console.error("Usage:");
+  console.error("  node dir2eml.js <input-folder> <output.mime> [--config <config-file>]");
+};
+
+const parseArgs = (argv) => {
+  const args = argv.slice(2);
+
+  if (args.length < 2) {
+    usage();
+    process.exit(1);
+  }
+
+  const inputFolder = args[0];
+  const outputFile = args[1];
+
+  let configFile;
+
+  for (let i = 2; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg === "--config") {
+      if (configFile) {
+        console.error("Duplicate --config flag.");
+        usage();
+        process.exit(1);
+      }
+
+      const value = args[i + 1];
+
+      if (!value || value.startsWith("--")) {
+        console.error("Missing value for --config.");
+        usage();
+        process.exit(1);
+      }
+
+      configFile = value;
+      i++;
+      continue;
+    }
+
+    console.error(`Unknown argument: ${arg}`);
+    usage();
+    process.exit(1);
+  }
+
+  return {
+    inputFolder,
+    outputFile,
+    configFile,
+  };
+};
+
+const loadConfig = async (inputFolder, configFile) => {
+  const configPath = configFile
+    ? path.resolve(configFile)
+    : path.join(inputFolder, CONFIG_FILE);
 
   try {
     const content = await fsp.readFile(configPath, "utf8");
@@ -65,7 +119,7 @@ const loadConfig = async (inputFolder) => {
       ),
     };
   } catch (err) {
-    if (err.code === "ENOENT") {
+    if (!configFile && err.code === "ENOENT") {
       return {
         excludeExt: createConfigArray(DEFAULT_CONFIG.excludeExt),
         excludeDir: createConfigArray(DEFAULT_CONFIG.excludeDir),
@@ -97,10 +151,10 @@ const addFile = async (files, fullPath, baseDir) => {
   try {
     const buffer = await fsp.readFile(fullPath);
 
-    if (isBinary(buffer)) {
-      console.warn(`Skipping binary file: ${fullPath}`);
-      return;
-    }
+    // if (isBinary(buffer)) {
+    //   console.warn(`Skipping binary file: ${fullPath}`);
+    //   return;
+    // }
 
     const content = buffer.toString("utf8");
 
@@ -149,14 +203,7 @@ const getFiles = async (dir, config, baseDir = dir) => {
 };
 
 const main = async () => {
-  const inputFolder = process.argv[2];
-  const outputFile = process.argv[3] || "files.mime";
-
-  if (!inputFolder) {
-    console.error("Usage:");
-    console.error("  node dir2eml.js <input-folder> [output.mime]");
-    process.exit(1);
-  }
+  const { inputFolder, outputFile, configFile } = parseArgs(process.argv);
 
   const resolvedInput = path.resolve(inputFolder);
 
@@ -169,11 +216,19 @@ const main = async () => {
     process.exit(1);
   }
 
-  const config = await loadConfig(resolvedInput);
+  const config = await loadConfig(resolvedInput, configFile);
 
   console.log(`Scanning ${resolvedInput}...`);
 
-  const boundary = `===============_${Date.now().toString(16)}_${Math.random().toString(16).slice(2)}`;
+  if (configFile) {
+    console.log(`Using config: ${path.resolve(configFile)}`);
+  } else {
+    console.log(`Using config: ${path.join(resolvedInput, CONFIG_FILE)} if present`);
+  }
+
+  const boundary = `===============_${Date.now().toString(16)}_${
+    Math.random().toString(16).slice(2)
+  }`;
   const LF = "\n";
   const out = fs.createWriteStream(outputFile, { encoding: "utf8" });
 
